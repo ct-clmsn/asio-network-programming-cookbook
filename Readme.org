@@ -1,0 +1,363 @@
+* Boost.Asio C++ Network Programming Cookbook by Dmytro Radchuk
+** Stuff
+Uses spdlog (https://github.com/gabime/spdlog) (sudo apt-get install libspdlog-dev)
+
+#+BEGIN_SRC
+// Runtime log levels
+spd::set_level(spd::level::info); //Set global log level to info
+console->debug("This message shold not be displayed!");
+console->set_level(spd::level::debug); // Set specific logger's log level
+console->debug("This message shold be displayed..");
+
+// Compile time log levels
+// define SPDLOG_DEBUG_ON or SPDLOG_TRACE_ON
+SPDLOG_TRACE(console, "Enabled only #ifdef SPDLOG_TRACE_ON..{} ,{}", 1, 3.23);
+SPDLOG_DEBUG(console, "Enabled only #ifdef SPDLOG_DEBUG_ON.. {} ,{}", 1, 3.23);
+
+// Console logger with color
+auto console = spd::stdout_color_mt("console");
+console->info("Welcome to spdlog!");
+console->error("Some error message with arg{}..", 1);
+
+// Formatting examples
+console->warn("Easy padding in numbers like {:08d}", 12);
+console->critical("Support for int: {0:d};  hex: {0:x};  oct: {0:o}; bin: {0:b}", 42);
+console->info("Support for floats {:03.2f}", 1.23456);
+console->info("Positional args are {1} {0}..", "too", "supported");
+console->info("{:<30}", "left aligned");
+
+
+spd::get("console")->info("loggers can be retrieved from a global registry using the spdlog::get(logger_name) function");
+#+END_SRC
+
+** Chapter 01 - The Basics
+*** TCP Protocol
+The ~TCP~ protocol is a transport layer protocol with the following characteristics:
+- It's reliable, which means that this protocol guarantees delivery of the messages in proper
+  order or a notification that the message has not been delivered. The protocol includes error
+  handling mechanisms, which frees the developer from the need to implement them in the
+  application.
+- It assumes logical connection establishment. Before one application can communicate with another
+  over the ~TCP~ protocol, it must establish a logical connection by exchanging service messages
+  according to the standard.
+- It assumes the point-to-point communication model. That is, only two applications can
+  communicate over a single connection. No multicast messaging is supported.
+- It is stream-oriented. This means that the data being sent by one application to another is
+  interpreted by the protocol as a stream of bytes. In practice, it means that if a sender
+  application sends a particular block of data, there is no guarantee that it will be delivered to
+  the receiver application as the same block of data in a single turn, that is, the sent message
+  may be broken into as many parts as the protocol wants and each of them will be delivered
+  separately, though in correct order.
+
+*** UDP Protocol
+The ~UDP~ protocol is a transport layer protocol having different (in some sense opposite)
+characteristics from those of the ~TCP~ protocol. The following are its characteristics:
+- It's unreliable, which means that if a sender sends a message over a ~UDP~ protocol, there is no
+  guarantee that the message will be delivered. The protocol won't try to detect or fix any errors.
+  The developer is responsible for all error handling.
+- It's connectionless, meaning that no connection establishment is needed before the applications
+  can communicate.
+- It supports both one-to-one and one-to-many communication models. Multicast messages are supported
+  by the protocol.
+- It's datagram oriented. This means that the protocol interprets data as messages of a particular
+  size and will try to deliver them as a whole. The message (datagram) either will be delivered as a
+  whole, or if the protocol fails to do that won't be delivered at all.
+
+*** Creating an endpoint
+A typical client application, before it can communicate with a server application to consume its
+services, must obtain the ~IP~ address of the host on which the server application is running and
+the protocol port number associated with it. A pair of values consisting of an ~IP~ address and a
+protocol port number that uniquely identifies a particular application running on a particular host
+in a computer network is called an endpoint.
+
+The ~IP~ address can be represented as a string containing an address in dot-decimal notation if it
+is an ~IPv4~ address (for example, =192.168.10.112=) or in hexadecimal notation if it is an ~IPv6~
+address (for example, =FE36::0404:C3FA:EF1E:3829=). Besides, the server ~IP~ address can be provided
+to the client application in an indirect form, as a string containing a ~DNS~ name (for example,
+=localhost= or =www.google.com=). Another way to represent an ~IP~ address is an integer value. The
+~IPv4~ address is represented as a 32-bit integer and ~IPv6~ as a 64-bit integer. However, due to
+poor readability and memorability this representation is used extremely rarely.
+
+If the client application is provided with a ~DNS~ name before it can communicate with the server
+application, it must resolve the ~DNS~ name to obtain the actual IP address of the host running the
+server application. Sometimes, the ~DNS~ name may map to multiple ~IP~ addresses, in which case the
+client may want to try addresses one by one until it finds the one that works.
+
+The server application needs to deal with endpoints too. It uses the endpoint to specify to the
+operating system on which the ~IP~ address and protocol port it wants to listen for incoming
+messages from the clients. If the host running the server application has only one network interface
+and a single ~IP~ address assigned to it, the server application has only one option as to on which
+address to listen. However, sometimes the host might have more than one network interface and
+correspondingly more than one ~IP~ address. In this situation, the server application encounters a
+difficult problem of selecting an appropriate ~IP~ address on which to listen for incoming messages.
+The problem is that the application knows nothing about details such as underlying ~IP~ protocol
+settings, packet routing rules, ~DNS~ names which are mapped to the corresponding ~IP~ addresses,
+and so on. Therefore, it is quite a complex task (and sometimes even not solvable) for the server
+application to foresee through which ~IP~ address the messages sent by clients will be delivered to
+the host.
+
+If the server application chooses only one ~IP~ address to listen for incoming messages, it may miss
+messages routed to other ~IP~ addresses of the host. Therefore, the server application usually wants
+to listen on all ~IP~ addresses available on the host. This guarantees that the server application
+will receive all messages arriving at any ~IP~ address and the particular protocol port.
+
+**** Creating an endpoint in the client to designate the server
+The following algorithm describes steps required to perform in the client application to create an
+endpoint designating a server application the client wants to communicate with. Initially, the IP
+address is represented as a string in the dot-decimal notation if this is an IPv4 address or in
+hexadecimal notation if this is an IPv6 address:
+1. Obtain the server application's IP address and port number. The IP address should be specified as
+   a string in the dot-decimal (IPv4) or hexadecimal (IPv6) notation.
+2. Represent the raw IP address as an object of the ~asio::ip::address~ class.
+3. Instantiate the object of the ~asio::ip::tcp::endpoint~ or ~asio::ip::udp::endpoint~ class from
+   the address object created in step 2 and a port number.
+4. The endpoint is ready to be used to designate the server application in Boost.Asio communication
+   related methods.
+
+**** Creating the server endpoint
+The following algorithm describes steps required to perform in a server application to create an
+endpoint specifying all IP addresses available on the host and a port number on which the server
+application wants to listen for incoming messages from the clients:
+1. Obtain the protocol port number on which the server will listen for incoming requests.
+2. Create a special instance of the ~asio::ip::address~ object representing all IP addresses
+   available on the host running the server.
+3. Instantiate an object of the ~asio::ip::tcp::endpoint~ or ~asio::ip::udp::endpoint~ class from
+   the address object created in step 2 and a port number.
+4. The endpoint is ready to be used to specify to the operating system that the server wants to
+   listen for incoming messages on all IP addresses and a particular protocol port number.
+
+*** Creating a socket
+The TCP/IP standard tells us nothing about sockets. Moreover, it tells us almost nothing about how
+to implement the ~TCP~ or ~UDP~ protocol software ~API~ through which this software functionality
+can be consumed by the application.
+
+Berkeley Sockets ~API~ is the most popular ~TCP~ and ~UDP~ protocols' ~API~. It is designed around
+the concept of a socket - an abstract object representing a communication session context. Before we
+can perform any network I/O operations, we must first allocate a socket object and then associate
+each I/O operation with it.
+
+Boost.Asio borrows many concepts from Berkeley Sockets ~API~ and is so much similar to it that we
+can call it "an object oriented Berkeley Sockets ~API~". The Boost.Asio library includes a class
+representing a socket concept, which provides interface methods similar to those found in Berkeley
+Sockets ~API~.
+
+Basically, there are two types of sockets. A socket intended to be used to send and receive data to
+and from a remote application or to initiate a connection establishment process with it is called an
+~active~ socket, whereas a ~passive~ socket is the one used to passively wait for incoming
+connection requests from remote applications. Passive sockets don't take part in user data
+transmission.
+
+A ~passive~ socket or ~acceptor~ socket is a type of socket that is used to wait for connection
+establishment requests from remote applications that communicate over the ~TCP~ protocol. This
+definition has two important implications:
+- Passive sockets are used only in server applications or hybrid applications that may play both
+  roles of the client and server.
+- Passive sockets are defined only for the ~TCP~ protocol. As the ~UDP~ protocol doesn't imply
+  connection establishment, there is no need for a passive socket when communication is performed
+  over ~UDP~.
+
+**** Creating an active socket
+The following algorithm describes the steps required to perform in a client application to create
+and open an active socket:
+1. Create an instance of the ~asio::io_service~ class or use the one that has been created earlier.
+2. Create an object of the class that represents the transport layer protocol (~TCP~ or ~UDP~) and
+   the version of the underlying ~IP~ protocol (~IPv4~ or ~IPv6~) over which the socket is intended
+   to communicate.
+3. Create an object representing a socket corresponding to the required protocol type. Pass the
+   object of ~asio::io_service~ class to the socket's constructor.
+4. Call the socket's ~open()~ method, passing the object representing the protocol created in step 2
+   as an argument.
+
+**** Creating a passive socket
+In Boost.Asio a ~passive~ socket is represented by the ~asio::ip::tcp::acceptor~ class. The name of
+the class suggests the key function of the objects of the class - to listen for and accept or handle
+incoming connection requests.
+
+The following algorithm describes the steps required to perform to create an ~acceptor~ socket:
+1. Create an instance of the ~asio::io_service~ class or use the one that has been created earlier.
+2. Create an object of the ~asio::ip::tcp~ class that represents the ~TCP~ protocol and the required
+   version of the underlying ~IP~ protocol (~IPv4~ or ~IPv6~).
+3. Create an object of the ~asio::ip::tcp::acceptor~ class representing an ~acceptor~ socket,
+   passing the object of the ~asio::io_service~ class to its constructor.
+4. Call the ~acceptor~ socket's ~open()~ method, passing the object representing the protocol
+   created in step 2 as an argument.
+
+*** Resolving a DNS name
+To enable labeling the devices in a network with human-friendly names, the ~Domain Name System
+(DNS)~ was introduced. In short, ~DNS~ is a distributed naming system that allows associating
+human-friendly names with devices in a computer network. A ~DNS~ name or a domain name is a string
+that represents a name of a device in the computer network.
+
+To be precise, a ~DNS~ name is an alias for one or more ~IP~ addresses but not the devices. It
+doesn't name a particular physical device but an ~IP~ address that can be assigned to a device.
+Thus, ~DNS~ introduces a level of indirection in addressing a particular server application in the
+network.
+
+~DNS~ acts as a distributed database storing mappings of ~DNS~ names to corresponding ~IP~ addresses
+and providing an interface, allowing querying the ~IP~ addresses to which a particular ~DNS~ name is
+mapped. The process of transforming a ~DNS~ name into corresponding ~IP~ addresses is called a =DNS
+name resolution=. Modern network operating systems contain functionality that can query ~DNS~ to
+resolve ~DNS` names and provides the interface that can be used by applications to perform ~DNS~
+name resolution.
+
+When given a ~DNS~ name, before a client can communicate with a corresponding server application, it
+must first resolve the name to obtain ~IP~ addresses associated with that name.
+
+The following algorithm describes steps required to perform in a client application in order to
+resolve a ~DNS~ name to obtain ~IP~ addresses (zero or more) of hosts (zero or more) running the
+server application that the client application wants to communicate with:
+1. Obtain the ~DNS~ name and the protocol port number designating the server application and
+   represent them as strings.
+2. Create an instance of the ~asio::io_service~ class or use the one that has been created earlier.
+3. Create an object of the ~resolver::query~ class representing a ~DNS~ name resolution query.
+4. Create an instance of ~DNS~ name ~resolver~ class suitable for the necessary protocol.
+5. Call the resolver's ~resolve()~ method, passing a query object created in step 3 to it as an
+   argument.
+
+*** Binding a socket to an endpoint
+Before an active socket can communicate with a remote application or a passive socket can accept
+incoming connection requests, they must be associated with a particular local ~IP~ address (or
+multiple addresses) and a protocol port number, that is, an ~endpoint~. The process of associating a
+socket with a particular endpoint is called =binding=. When a socket is bound to an endpoint, all
+network packets coming into the host from the network with that endpoint as their target address
+will be redirected to that particular socket by the operating system. Likewise, all the data coming
+out from a socket bound to a particular endpoint will be output from the host to the network through
+a network interface associated with the corresponding ~IP~ address specified in that endpoint.
+
+~UDP~ servers don't establish connections and use ~active~ sockets to wait for incoming requests.
+The process of binding an ~active~ socket is very similar to binding an ~acceptor~ socket.
+
+The following algorithm describes steps required to create an ~acceptor~ socket and to bind it to an
+endpoint designating all ~IP~ addresses available on the host and a particular protocol port number
+in the ~IPv4~ ~TCP~ server application:
+1. Obtain the protocol port number on which the server should listen for incoming connection
+   requests.
+2. Create an endpoint that represents all ~IP~ addresses available on the host and the protocol port
+   number obtained in the step 1.
+3. Create and open an ~acceptor~ socket.
+4. Call the ~acceptor~ socket's ~bind()~ method, passing the endpoint object as an argument to it.
+
+*** Connecting a socket
+**** IP Address / Port Number Connection
+Before a TCP socket can be used to communicate with a remote application, it must
+establish a logical connection with it. According to the TCP protocol, the connection
+establishment process lies in exchanging of service messages between two applications,
+which, if succeeds, results in two applications being logically connected and ready for
+communication with each other.
+
+Roughly, the connection establishment process looks like this. The client application, when it wants
+to communicate with the server application, creates and opens an ~active~ socket and issues a
+~connect()~ command on it, specifying a target server application with an ~endpoint~ object. This
+leads to a connection establishment request message being sent to the server application over the
+network. The server application receives the request and creates an ~active~ socket on its side,
+marking it as connected to a specific client and replies back to the client with the message
+acknowledging that connection is successfully set up on the server side. Next, the client having
+received the acknowledgment from the server, marks its socket as connected to the server, and sends
+one more message to it acknowledging that the connection is successfully set up on the client side.
+When the server receives the acknowledgment message from the client, the logical connection between
+two applications is considered established.
+
+The point-to-point communication model is assumed between two connected sockets. This means that if
+socket A is connected to socket B, both can only communicate with each other and cannot communicate
+with any other socket C. Before socket A can communicate with socket C, it must close the connection
+with socket B and establish a new connection with socket C.
+
+The following algorithm descries steps required to perform in the ~TCP~ client application to
+synchronously connect an ~active~ socket to the server application:
+1. Obtain the target server application's ~IP~ address and a protocol port number.
+2. Create an object of the ~asio::ip::tcp::endpoint~ class from the ~IP~ address and the protocol
+   port number obtained in step 1.
+3. Create and open an ~active~ socket.
+4. Call the socket's ~connect()~ method specifying the endpoint object created in step 2 as an
+   argument.
+5. If the method succeeds, the socket is considered connected and can be used to send and receive
+   data to and from the server.
+
+**** DNS Name / Port Number Connection
+The previous recipe showed how to connect a socket to a specific server application designated by an
+endpoint when an ~IP~ address and a protocol port number are provided to the client application
+explicitly. However, sometimes the client application is provided with a ~DNS~ name that may be
+mapped to one or more ~IP~ addresses. In this case, we first need to resolve the ~DNS~ name using
+the ~resolve()~ method provided by the ~asio::ip::tcp::resolver~ class. This method resolves a ~DNS~
+name, creates an object of the ~asio::ip::tcp::endpoint~ class from each ~IP~ address resulted from
+resolution, puts all endpoint objects in a collection, and returns an object of the
+~asio::ip::tcp::resolver::iterator~ class, which is an iterator pointing to the first element in the
+collection.
+
+When a ~DNS~ name resolves to multiple ~IP~ addresses, the client application - when deciding to
+which one to connect - usually has no reasons to prefer one ~IP~ address to any other. The common
+approach in this situation is to iterate through endpoints in the collection and try to connect to
+each of them one by one until the connection succeeds. Boost.Asio provides auxiliary functionality
+that implements this approach.
+
+The free function ~asio::connect()~ accepts an ~active~ socket object and an object of the
+~asio::ip::tcp::resolver::iterator~ class as input arguments, iterates over a collection of
+endpoints, and tries to connect the socket to each endpoint. The function stops iteration, and
+returns when it either successfully connects a socket to one of the endpoints or when it has tried
+all the endpoints and failed to connect the socket to all of them.
+
+The following algorithm demonstrates steps required to connect a socket to a server application
+represented by a ~DNS~ name and a protocol port number:
+1. Obtain the ~DNS~ name of a host running the server application and the server's port number and
+   represent them as strings.
+2. Resolve a ~DNS~ name using the ~asio::ip::tcp::resolver~ class.
+3. Create an ~active~ socket without opening it.
+4. Call the ~asio::connect()~ function passing a socket object and an iterator object obtained in
+   step 2 to it as arguments.
+
+*** Accepting Connections
+When the client application wants to communicate to the server application over a ~TCP~ protocol, it
+first needs to establish a logical connection with that server. In order to do that, the client
+allocates an ~active~ socket and issues a ~connect~ command on it (for example by calling the
+~connect()~ method on the socket object), which leads to a connection establishment request message
+being sent to the server.
+
+On the server side, some arrangements must be performed before the server application can accept and
+handle the connection requests arriving from the clients. Before that, all connection requests
+targeted at this server application are rejected by the operating system.
+
+First, the server application creates and opens an ~acceptor~ socket and binds it to the particular
+~endpoint~. At this point, the client's connection requests arriving at the ~acceptor~ socket's
+~endpoint~ are still rejected by the operating system. For the operating system to start accepting
+connection requests targeted at particular ~endpoint~ associated with particular ~acceptor~ socket,
+that ~acceptor~ socket must be switched into listening mode. After that, the operating system
+allocates a ~queue~ for pending connection requests associated with this ~acceptor~ socket and starts
+accepting connection request addressed to it.
+
+When a new connection request arrives, it is initially received by the operating system, which puts
+it to the pending connection requests ~queue~ associated with an ~acceptor~ socket being the
+connection request's target. When in the ~queue~, the connection request is available to the server
+application for processing. The server application, when ready to process the next connection
+request, de-queues one and processes it.
+
+Note that the ~acceptor~ socket is only used to establish connections with client applications and
+is not used in the further communication process. When processing a pending connection request, the
+~acceptor~ socket allocates a new ~active~ socket, binds it to an ~endpoint~ chosen by the operating
+system, and connects it to the corresponding client application that has issued that connection
+request. Then, this new ~active~ socket is ready to be used for communication with the client. The
+~acceptor~ socket becomes available to process the next pending connection request.
+
+Note that ~UDP~ servers don't use ~acceptor~ sockets because the ~UDP~ protocol doesn't imply
+connection establishment. Instead, an ~active~ socket is used that is bound to an ~endpoint~ and
+listens for incoming I/O messages, and this same ~active~ socket is used for communication.
+
+The following algorithm describes how to set up an ~acceptor~ socket so that it starts listening for
+incoming connections and then how to use it to synchronously process the pending connection request.
+The algorithm assumes that only one incoming connection will be processed in synchronous mode:
+1. Obtain the port number on which the server will receive incoming connection requests.
+2. Create a server ~endpoint~.
+3. Instantiate and open an ~acceptor~ socket.
+4. Bind the ~acceptor~ socket to the server ~endpoint~ created in step 2.
+5. Call the ~acceptor~ socket's ~listen()~ method to make it start listening for incoming connection
+   requests on the ~endpoint~.
+6. Instantiate an ~active~ socket object.
+7. When ready to process a connection request, call the ~acceptor~ socket's ~accept()~ method
+   passing an ~active~ socket object created in step 6 as an argument.
+8. If the call succeeds, the ~active~ socket is connected to the client application and is ready to
+   be used for communication with it.
+
+** Chapter 02 - I/O Operations
+** Chapter 03 - Implementing Client Applications
+** Chapter 04 - Implementing Server Applications
+** Chapter 05 - HTTP and SSL/TLS
+** Chapter 06 - Other Topics

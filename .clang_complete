@@ -1,0 +1,14 @@
+-std=c++14
+-Wall
+-Wextra
+-Wshadow
+-Wnon-virtual-dtor
+-pedantic
+-g
+-DDEBUG
+-DASIO_STANDALONE
+-O0
+-I/usr/include/
+-I/usr/include/c++/5/
+-I/home/jvillasante/Software/src/asio-1.10.8/include/
+-I.
