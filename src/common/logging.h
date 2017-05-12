@@ -1,3 +1,6 @@
+#ifndef LOGGING_H
+#define LOGGING_H
+
 #include <iostream>
 #include <memory>
 #include <spdlog/spdlog.h>
@@ -16,5 +19,9 @@ namespace logging {
     return console;
   }
 
+  auto get() { return spdlog::get("console"); }
+
   void teardown() { spdlog::drop_all(); }
 }
+
+#endif /* LOGGING_H */

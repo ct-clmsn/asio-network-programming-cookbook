@@ -25,3 +25,17 @@ ch01: clean
 	$(CC) $(ALL_FLAGS) -o $(BIN)/10_ConnectingSocket $(SRC)/ch01/10_Connecting_a_socket.cpp
 	$(CC) $(ALL_FLAGS) -o $(BIN)/11_ConnectingSocketDNS $(SRC)/ch01/11_Connecting_a_socket_DNS_name.cpp
 	$(CC) $(ALL_FLAGS) -o $(BIN)/12_AcceptingConnection $(SRC)/ch01/12_Accepting_a_connection.cpp
+
+ch02: clean
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/01_FixedLengthBufferOutput $(SRC)/ch02/01_Fixed_length_buffer_output.cpp
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/02_FixedLengthBufferInput $(SRC)/ch02/02_Fixed_length_buffer_input.cpp
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/03_ExtensibleStreamOrientedBuffer $(SRC)/ch02/03_Extensible_stream_oriented_buffer.cpp
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/04_WritingToTCPSocketSync $(SRC)/ch02/04_Writing_to_TCP_socket_sync.cpp
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/05_ReadingFromTCPSocketSync $(SRC)/ch02/05_Reading_from_TCP_socket_sync.cpp
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/06_WritingToTCPSocketAsync $(SRC)/ch02/06_Writing_to_TCP_socket_async.cpp
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/07_WritingToTCPSocketAsyncEnhanced $(SRC)/ch02/07_Writing_to_TCP_socket_async_enhanced.cpp
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/08_ReadingFromTCPSocketAsync $(SRC)/ch02/08_Reading_from_TCP_socket_async.cpp
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/09_ReadingFromTCPSocketAsyncEnhanced $(SRC)/ch02/09_Reading_from_TCP_socket_async_enhanced.cpp
+	# $(CC) $(ALL_FLAGS) -o $(BIN)/10_CancelingAsyncOperations $(SRC)/ch02/10_Canceling_async_operations.cpp
+	$(CC) $(ALL_FLAGS) -o $(BIN)/11_SocketShutdownClient $(SRC)/ch02/11_Socket_shutdown_client.cpp
+	$(CC) $(ALL_FLAGS) -o $(BIN)/12_SocketShutdownServer $(SRC)/ch02/12_Socket_shutdown_server.cpp

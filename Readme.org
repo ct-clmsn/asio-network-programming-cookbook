@@ -357,7 +357,419 @@ The algorithm assumes that only one incoming connection will be processed in syn
    be used for communication with it.
 
 ** Chapter 02 - I/O Operations
+I/O operations are the key operations in the networking infrastructure of any distributed
+application. They are directly involved in the process of data exchange. Input operations are used
+to receive data from remote applications, whereas output operations allow sending data to them.
+
+*** Using fixed length I/O buffers
+Fixed length I/O buffers are usually used with I/O operations and play the role of either a data
+source or destination when the size of the message to be sent or received is known. For example,
+this can be a constant array of chars allocated on a stack, which contain a string that represents
+the request to be sent to the server. Or, this can be a writable buffer allocated in the free
+memory, which is used as a data destination point, when reading data from a socket.
+
+In Boost.Asio, a fixed length buffer is represented by one of the two classes:
+~asio::mutable_buffer~ or ~asio::const_buffer~. Both these classes represent a contiguous block of
+memory that is specified by the address of the first byte of the block and its size in bytes. As the
+names of these classes suggest, ~asio::mutable_buffer~ represents a writable buffer, whereas
+~asio::const_buffer~ represents a read-only one.
+
+However, neither the ~asio::mutable_buffer~ nor ~asio::const_buffer~ classes are used in Boost.Asio
+I/O functions and methods directly. Instead, the ~MutableBufferSequence~ and ~ConstBufferSequence~
+concepts are introduced.
+
+The ~asio::mutable_buffers_1~ and ~asio::const_buffers_1~ classes are adapters of the
+~asio::mutable_buffer~ and ~asio::const_buffer~ classes, respectively. They provide an interface and
+behavior that satisfy the requirements of the ~MutableBufferSequence~ and ~ConstBufferSequence~
+concepts, which allows us to pass these adapters as arguments to Boost.Asio I/O functions and
+methods.
+
+It's important to note that neither the classes that represent the buffers nor the adaptor classes
+provided by Boost.Asio that we've considered (namely, ~asio::mutable_buffer~, ~asio::const_buffer~,
+~asio::mutable_buffers_1~, and ~asio::const_buffers_1~) take ownership of the underlying raw buffer.
+These classes only provide the interface to the buffer and don't control its lifetime.
+
+**** Preparing a buffer for an output operation
+The following algorithm and corresponding code sample describes how to prepare a buffer that can be
+used with the Boost.Asio socket's method that performs an output operation such as
+~asio::ip::tcp::socket::send()~ or the ~asio::write()~ free function:
+1. Allocate a buffer. Note that this step does not involve any functionality or data types from
+   Boost.Asio.
+2. Fill the buffer with the data that is to be used as the output.
+3. Represent the buffer as an object that satisfies the ~ConstBufferSequence~ concept's
+   requirements.
+4. The buffer is ready to be used with Boost.Asio output methods and functions.
+
+**** Preparing a buffer for an input operation
+The following algorithm and corresponding code sample describes how to prepare the buffer that can
+be used with the Boost.Asios socket's method that performs an input operation such as
+~asio::ip::tcp::socket::receive()~ or the ~asio::read()~ free function:
+1. Allocate a buffer. The size of the buffer must be big enough to fit the block of data to be
+   received. Note that this step does not involve any functionality or data types from Boost.Asio.
+2. Represent the buffer using an object that satisfies the ~MutableBufferSequence~ concept's
+   requirements.
+3. The buffer is ready to be used with Boost.Asio input methods and functions.
+
+*** Using extensible stream-oriented I/O buffers
+Extensible buffers are those buffers that dynamically increase their size when new data is written
+to them. They are usually used to read data from sockets when the size of the incoming message is
+unknown.
+
+Some application layer protocols do not define the exact size of the message. Instead, the boundary
+of the message is represented by a specific sequence of symbols at the end of the message itself or
+by a transport protocol service message end of file (~EOF~) issued by the sender after it finishes
+sending the message.
+
+For example, according to the ~HTTP~ protocol, the header section of the request and response
+messages don't have a fixed length and its boundary is represented by a sequence of four ~ASCII~
+symbols, ~<CR><LF><CR><LF>~, which is part of the message. In such cases, dynamically extensible
+buffers and functions that can work with them, which are provided by the Boost.Asio library, are
+very useful.
+
+Extensible stream-oriented buffers are represented in Boost.Asio with the ~asio::streambuf~ class,
+which is a ~typedef~ for ~asio::basic_streambuf~: ~typedef basic_streambuf<> streambuf;~ The
+~asio::basic_streambuf<>~ class is inherited from ~std::streambuf~, which means that it can be used
+as a stream buffer for STL stream classes. In addition to this, several I/O functions provided by
+Boost.Asio deal with buffers that are represented as objects of this class.
+
+We can work with an object of the ~asio::streambuf~ class just like we would work with any stream
+buffer class that is inherited from the ~std::streambuf~ class. For example, we can assign this
+object to a stream (for example, ~std::istream~, ~std::ostream~, or ~std::iostream~, depending on
+our needs), and then, use stream's ~operator<<()~ and ~operator>>()~ operators to write and read
+data to and from the stream.
+
+*** Writing to a TCP socket synchronously
+Writing to a ~TCP~ socket is an output operation that is used to send data to the remote application
+connected to this socket. Synchronous writing is the simplest way to send the data using a socket
+provided by Boost.Asio. The methods and functions that perform synchronous writing to the socket
+block the thread of execution and do not return until the data (at least some amount of data) is
+written to the socket or an error occurs.
+
+The most basic way to write to the socket provided by the Boost.Asio library is to use the
+~write_some()~ method of the ~asio::ip::tcp::socket~ class. This method accepts an object that
+represents a composite buffer as an argument, and as its name suggests, writes some amount of data
+from the buffer to the socket. If the method succeeds, the return value indicates the number of
+bytes written. The point to emphasize here is that the method may not send all the data provided to
+it through the buffers argument. The method only guarantees that at least one byte will be written
+if an error does not occur. This means that, in a general case, in order to write all the data from
+the buffer to the socket, we may need to call this method several times.
+
+The following algorithm describes the steps required to synchronously write data to a ~TCP~ socket
+in a distributed application:
+1. In a client application, allocate, open, and connect an active ~TCP~ socket. In a server
+   application, obtain a connected active ~TCP~ socket by accepting a connection request using an
+   ~acceptor~ socket.
+2. Allocate the buffer and fill it with data that is to be written to the socket.
+3. In a loop, call the socket's ~write_some()~ method as many times as it is needed to send all the
+   data available in the buffer.
+
+**** Alternative – the send() method
+The ~asio::ip::tcp::socket~ class contains another method to synchronously write data to the socket
+named ~send()~. There are three overloads of this method. One of them is equivalent to the
+~write_some()~ method, as described earlier. It has exactly the same signature and provides exactly
+the same functionality. These methods are synonyms in a sense.
+
+**** Alternative - the asio::write() free function
+Writing to a socket using the socket's ~write_some()~ method seems very complex for such a simple
+operation. Even if we want to send a small message that consists of several bytes, we must use a
+loop, a variable to keep track of how many bytes have already been written, and properly construct a
+buffer for each iteration of the loop. This approach is error-prone and makes the code more
+difficult to understand. Fortunately, Boost.Asio provides a free function, which simplifies writing
+to a socket. This function is called ~asio::write()~.
+
+This function accepts two arguments. The first of them is a reference to an object that satisfies
+the requirements of the ~SyncWriteStream~ concept. The object of the ~asio::ip::tcp::socket~ class
+that represents a ~TCP~ socket satisfies these requirements and, therefore, can be used as the first
+argument of the function. The second argument represents the buffer (simple or composite) and
+contains data that is to be written to the socket.
+
+In contrast to the socket object's ~write_some()~ method, which writes some amount of data from the
+buffer to the socket, the ~asio::write()~ function writes all the data available in the buffer. This
+simplifies writing to the socket and makes the code shorter and cleaner.
+
+*** Reading from a TCP socket synchronously
+Reading from a ~TCP~ socket is an input operation that is used to receive data sent by the remote
+application connected to this socket. Synchronous reading is the simplest way to receive the data
+using a socket provided by Boost.Asio. The methods and functions that perform synchronous reading
+from the socket blocks the thread of execution and doesn't return until the data (at least some
+amount of data) is read from the socket or an error occurs.
+
+The most basic way to read data from the socket provided by the Boost.Asio library is the
+~read_some()~ method of the ~asio::ip::tcp::socket~ class. This method accepts an object that
+represents a writable buffer (single or composite) as an argument, and as its name suggests, reads
+some amount of data from the socket to the buffer. If the method succeeds, the return value
+indicates the number of bytes read. It's important to note that there is no way to control how many
+bytes the method will read. The method only guarantees that at least one byte will be read if an
+error does not occur. This means that, in a general case, in order to read a certain amount of data
+from the socket, we may need to call the method several times.
+
+The following algorithm describes the steps required to synchronously read data from a ~TCP~ socket
+in a distributed application:
+1. In a client application, allocate, open, and connect an active ~TCP~ socket. In a server
+   application, obtain a connected active ~TCP~ socket by accepting a connection request using an
+   ~acceptor~ socket.
+2. Allocate the buffer of a sufficient size to fit in the expected message to be read.
+3. In a loop, call the socket's ~read_some()~ method as many times as it is needed to read the
+   message.
+
+**** Alternative - the receive() method
+The ~asio::ip::tcp::socket~ class contains another method to read data from the socket synchronously
+called ~receive()~. There are three overloads of this method. One of them is equivalent to the
+~read_some()~ method, as described earlier. It has exactly the same signature and provides exactly
+the same functionality. These methods are synonyms in a sense.
+
+**** Alternative Asio free functions
+Reading from a socket using the socket's ~read_some()~ method seems very complex for such a simple
+operation. This approach requires us to use a loop, a variable to keep track of how many bytes have
+already been read, and properly construct a buffer for each iteration of the loop. This approach is
+error-prone and makes the code more difficult to understand and maintain.
+
+Fortunately, Boost.Asio provides a family of free functions that simplify synchronous reading
+of data from a socket in different contexts. There are three such functions, each having
+several overloads, that provide a rich functionality that facilitates reading data from a socket.
+
+***** The asio::read() function
+The ~asio::read()~ function is the simplest one out of the three. This function accepts two
+arguments. The first of them is a reference to an object that satisfies the requirements of the
+~SyncReadStream~ concept. The object of the ~asio::ip::tcp::socket~ class that represents a ~TCP~
+socket satisfies these requirements and, therefore, can be used as the first argument of the
+function. The second argument represents a buffer (simple or composite) to which the data will be
+read from the socket.
+
+In contrast to the socket's ~read_some()~ method, which reads some amount of data from the socket to
+the buffer, the ~asio::read()~ function, during a single call, reads data from the socket until the
+buffer passed to it as an argument is filled or an error occurs. This simplifies reading from the
+socket and makes the code shorter and cleaner.
+
+***** The asio::read_until() function
+The ~asio::read_until()~ function provides a way to read data from a socket until a specified
+pattern is encountered in the data. There are eight overloads of this function.
+
+This function accepts three arguments. The first of them is a reference to an object that satisfies
+the requirements of the ~SyncReadStream~ concept. The object of the ~asio::ip::tcp::socket~ class
+that represents a ~TCP~ socket satisfies these requirements and, therefore, can be used as the first
+argument of the function. The second argument represents a stream-oriented extensible buffer in
+which the data will be read. The last argument specifies a delimiter character.
+
+The ~asio::read_until()~ function will read data from the socket to the buffer until it encounters a
+character specified by the delimiter argument in the read portion of the data. When the specified
+character is encountered, the function returns.
+
+It's important to note that the ~asio::read_until()~ function is implemented so that it reads the
+data from the socket by blocks of variable sizes (internally it uses the socket's ~read_some()~
+method to read the data). When the function returns, the buffer may contain some symbols after the
+delimiter symbol. This may happen if the remote application sends some more data after the delimiter
+symbol (for example, it may send two messages in a row, each having a delimiter symbol in the end).
+In other words, when the ~asio::read_until()~ function returns successfully, it is guaranteed that
+the buffer contains at least one delimiter symbol but may contain more. It is the developer's
+responsibility to parse the data in the buffer and handle the situation when it contains data after
+the delimiter symbol.
+
+***** The asio::read_at() function
+The ~asio::read_at()~ function provides a way to read data from a socket, starting at a particular
+offset. Because this function is rarely used, it is beyond the scope of this book. Refer to the
+corresponding Boost.Asio documentation section for more details about this function and its
+overloads.
+
+*** Writing to a TCP socket asynchronously
+Asynchronous writing is a flexible and efficient way to send data to a remote application.
+
+The most basic tool used to asynchronously write data to the socket provided by the Boost.Asio
+library is the ~async_write_some()~ method of the ~asio::ip::tcp::socket~ class. This method
+initiates the write operation and returns immediately. It accepts an object that represents a buffer
+that contains the data to be written to the socket as its first argument. The second argument is a
+callback, which will be called by Boost.Asio when an initiated operation is completed. This argument
+can be a function pointer, functor, or any other object that satisfies the requirements of the
+~WriteHandler~ concept.
+
+As the ~async_write_some()~ method's name suggests, it initiates an operation that is intended to
+write some amount of data from the buffer to the socket. This method guarantees that at least one
+byte will be written during the corresponding asynchronous operation if an error does not occur.
+This means that, in a general case, in order to write all the data available in the buffer to the
+socket, we may need to perform this asynchronous operation several times.
+
+The following algorithm describes the steps required to perform and implement an application, which
+writes data to a ~TCP~ socket asynchronously. Note that this algorithm provides a possible way to
+implement such an application. Boost.Asio is quite flexible and allows us to organize and structure
+the application by writing data to a socket asynchronously in many different ways:
+1. Define a data structure that contains a pointer to a socket object, a buffer, and a variable used
+   as a counter of bytes written.
+2. Define a callback function that will be called when the asynchronous writing operation is
+   completed.
+3. In a client application, allocate and open an active ~TCP~ socket and connect it to a remote
+   application. In a server application, obtain a connected active ~TCP~ socket by accepting a
+   connection request.
+4. Allocate a buffer and fill it with data that is to be written to the socket.
+5. Initiate an asynchronous writing operation by calling the socket's ~async_write_some()~ method.
+   Specify a function defined in step 2 as a callback.
+6. Call the ~run()~ method on an object of the ~asio::io_service~ class.
+7. In a callback, increase the counter of bytes written. If the number of bytes written is less than
+   the total amount of bytes to be written, initiate a new asynchronous writing operation to write
+   the next portion of the data.
+
+**** Alternative - the asio::async_write() free function
+Although the ~async_write_some()~ method allows asynchronously writing data to the socket, the
+solution based on it is somewhat complex and error-prone. Fortunately, Boost.Asio provides a more
+convenient way to asynchronously write data to a socket using the free function
+~asio::async_write()~.
+
+This function is very similar to the socket's ~async_write_some()~ method. Its first argument is an
+object that satisfies the requirements of the ~AsyncWriteStream~ concept. The object of the
+~asio::ip::tcp::socket~ class satisfies these requirements and, therefore, can be used with this
+function.
+
+The second and the third arguments of the ~asio::async_write()~ function are similar to
+the first and second arguments of the ~async_write_some()~ method of a TCP socket object
+described in the previous sample. These arguments are buffers that contain data that is to
+be written and functions or objects that represent a callback, which will be called when the
+operation is completed.
+
+In contrast to the socket's ~async_write_some()~ method, which initiates the operation that writes
+some amount of data from the buffer to the socket, the ~asio::async_write()~ function initiates the
+operation, which writes all the data available in the buffer. In this case, the callback is called
+only when all the data available in the buffer is written to the socket or when an error occurs.
+This simplifies writing to the socket and makes the code shorter and cleaner.
+
+The ~asio::async_write()~ function is implemented by means of zero or more calls to the socket
+object's ~async_write_some()~ method. This is similar to how the ~writeToSocket()~ function in our
+initial sample is implemented. Note that the ~asio::async_write()~ function has three more
+overloads, providing additional functionalities. Some of them may be very useful in specific
+circumstances.
+
+*** Reading from a TCP socket asyncrhonously
+Asynchronous reading is a flexible and efficient way to receive data from a remote application.
+
+The most basic tool used to asynchronously read data from a ~TCP~ socket provided by the Boost.Asio
+library is the ~async_read_some()~ method of the ~asio::ip::tcp::socket~ class. This method
+initiates an asynchronous read operation and returns immediately. It accepts an object that
+represents a mutable buffer as its first argument to which the data will be read from the socket.
+The second argument is a callback that is called by Boost.Asio when the operation is completed. This
+argument can be a function pointer, a functor, or any other object that satisfies the requirements
+of the ~ReadHandler~ concept.
+
+As the ~async_read_some()~ method's name suggests, it initiates an operation that is intended to
+read some amount of data from the socket to the buffer. This method guarantees that at least one
+byte will be read during the corresponding asynchronous operation if an error does not occur. This
+means that, in a general case, in order to read all the data from the socket, we may need to perform
+this asynchronous operation several times.
+
+The following algorithm describes the steps required to implement an application, which reads data
+from a socket asynchronously. Note that this algorithm provides a possible way to implement such an
+application. Boost.Asio is quite flexible and allows us to organize and structure the application by
+reading data from a socket asynchronously in different ways:
+1. Define a data structure that contains a pointer to a socket object, a buffer, a variable that
+   defines the size of the buffer, and a variable used as a counter of bytes read.
+2. Define a callback function that will be called when an asynchronous reading operation is
+   completed.
+3. In a client application, allocate and open an active ~TCP~ socket, and then, connect it to a
+   remote application. In a server application, obtain a connected active ~TCP~ socket by accepting
+   a connection request.
+4. Allocate a buffer big enough for the expected message to fit in.
+5. Initiate an asynchronous reading operation by calling the socket's ~async_read_some()~ method,
+   specifying a function defined in step 2 as a callback.
+6. Call the ~run()~ method on an object of the ~asio::io_service~ class.
+7. In a callback, increase the counter of bytes read. If the number of bytes read is less than the
+   total amount of bytes to be read (that is, the size of an expected message), initiate a new
+   asynchronous reading operation to read the next portion of data.
+
+**** Alternative - the asio::async_read() free function
+Although the ~async_read_some()~ method, as described in the previous sample, allows asynchronously
+reading data from the socket, the solution based on it is somewhat complex and error-prone.
+Fortunately, Boost.Asio provides a more convenient way to asynchronously read data from a socket:
+the free function ~asio::async_read()~.
+
+This function is very similar to the socket's ~async_read_some()~ method. Its first argument is an
+object that satisfies the requirements of the AsyncReadStream concept. The second and third
+arguments of the ~asio::async_read()~ function are similar to the first and second arguments of the
+~async_read_some()~ method of a TCP socket object described in the previous sample. These arguments
+are buffers used as data destination points and functions or objects that represent a callback,
+which will be called when the operation is completed.
+
+In contrast to the socket's ~async_read_some()~ method, which initiates the operation, that reads
+some amount of data from the socket to the buffer, the ~asio::async_read()~ function initiates the
+operation that reads the data from the socket until the buffer passed to it as an argument is full.
+In this case, the callback is called when the amount of data read is equal to the size of the
+provided buffer or when an error occurs. This simplifies reading from the socket and makes the code
+shorter and cleaner.
+
+The ~asio::async_read()~ function is implemented by means of zero or more calls to the socket
+object's ~async_read_some()~ method. This is similar to how the ~readFromSocket()~ function in our
+initial sample is implemented. Note that the ~asio::async_read()~ function has three more overloads,
+providing additional functionalities. Some of them may be very useful in specific circumstances.
+
+*** Canceling asynchronous operations
+One of the benefits of asynchronous operations provided by the Boost.Asio library is that they can
+be canceled at any moment after the initiation.
+
+The following algorithm provides the steps required to initiate and cancel asynchronous operations
+with Boost.Asio:
+1. If the application is intended to run on Windows XP or Windows Server 2003, define flags that
+   enable asynchronous operation canceling on these versions of Windows.
+2. Allocate and open a ~TCP~ or ~UDP~ socket. It may be an active or passive (acceptor) socket in
+   the client or server application.
+3. Define a callback function or functor for an asynchronous operation. If needed, in this callback,
+   implement a branch of code that handles the situation when the operation has been canceled.
+4. Initiate one or more asynchronous operations and specify a function or an object defined in step
+   4 as a callback.
+5. Spawn an additional thread and use it to run the Boost.Asio event loop.
+6. Call the ~cancel()~ method on the socket object to cancel all the outstanding asynchronous
+   operations associated with this socket.
+
+In addition to this, the ~async_resolve()~ method of the ~asio::ip::tcp::resolver~ or
+~asio::ip::udp::resolver~ class used to asynchronously resolve a ~DNS~ name can be canceled by
+calling the resolver object's ~cancel()~ method.
+
+All asynchronous operations initiated by the corresponding free functions provided by Boost.Asio can
+be canceled as well by calling the ~cancel()~ method on an object that was passed to the free
+function as the first argument. This object can represent either a socket (active or passive) or a
+resolver.
+
+*** Shutting down and closing a socket
+In some distributed applications that communicate over the ~TCP~ protocol, there is a need to
+transfer messages that do not have a fixed size and specific byte sequence, marking its boundary.
+This means that the receiving side, while reading the message from the socket, cannot determine
+where the message ends by analyzing the message itself with either its size or its content.
+
+One approach to solve this problem is to structure each message in such a way that it consists of a
+logical header section and a logical body section. The header section has a fixed size and structure
+and specifies the size of the body section. This allows the receiving side to first read and parse
+the header, find out the size of the message body, and then properly read the rest of the message.
+
+This approach is quite simple and is widely used. However, it brings some redundancy and additional
+computation overhead, which may be unacceptable in some circumstances.
+
+Another approach can be applied when an application uses a separate socket for each message sent to
+its peer, which is a quite popular practice. The idea of this approach is to shut down the send part
+of the socket by the message sender after the message is written to the socket. This results in a
+special service message being sent to the receiver, informing the receiver that the message is over
+and the sender will not send anything else using the current connection.
+
+The second approach provides many more benefits than the first one and, because it is part of the
+~TCP~ protocol software, it is readily available to the developer for usage.
+
+Another operation on a socket, that is, closing may seem similar to shutting down, but it is
+actually very different from it. Closing a socket assumes returning the socket and all the other
+resources associated with it back to the operating system. Just like memory, a process or a thread,
+a file handle or a mutex, a socket is a resource of an operating system. And like any other
+resource, a socket should be returned back to the operating system after it has been allocated,
+used, and is not needed by the application anymore. Otherwise, a resource leak may occur, which may
+eventually lead to the exhaustion of the resource and to the application's fault or instability of
+the whole operating system. Serious issues that may occur when sockets are not closed make closing a
+very important operation.
+
+The main difference between shutting down and closing a ~TCP~ socket is that closing interrupts the
+connection if one is established and, eventually, deallocates the socket and returns it back to the
+operating system, while shutting down only disables writing, reading, or both the operations on the
+socket and sends a service message to the peer application notifying about this fact. Shutting down
+a socket never results in deallocating the socket.
+
+**** Closing a socket
+In order to close an allocated socket, the ~close()~ method should be called on the corresponding
+object of the ~asio::ip::tcp::socket~ class. However, usually, there is no need to do it explicitly
+because the destructor of the socket object closes the socket if one was not closed explicitly.
+
 ** Chapter 03 - Implementing Client Applications
+
 ** Chapter 04 - Implementing Server Applications
 ** Chapter 05 - HTTP and SSL/TLS
 ** Chapter 06 - Other Topics
