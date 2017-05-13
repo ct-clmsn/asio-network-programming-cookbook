@@ -1,0 +1,19 @@
+* The sample protocol
+In this chapter, we are going to consider three recipes, each of which demonstrates how to implement
+a particular type of a client application: the synchronous ~UDP client~, synchronous ~TCP client~,
+and asynchronous ~TCP client~. In all the recipes, it is assumed that the client application
+communicates with the server application using the following simple application-level protocol.
+
+The server application accepts a request represented as an ASCII string. The string has the
+following format:
+    ~EMULATE_LONG_COMP_OP [s]<LF>~
+Where ~[s]~ is a positive integer value and ~<LF>~ is ASCII a new-line symbol.
+
+The server interprets this string as a request to perform a dummy operation that lasts for ~[s]~
+seconds. For example, a request string may look as follows:
+    ~EMULATE_LONG_COMP_OP 10\n~
+This means that the client sending this request wants the server to perform the dummy operation for
+10 seconds and then send a response to it.
+
+Like the request, the response returned by the server is represented by an ASCII string. It may
+either be ~OK<LF>~ if the operation completes successfully or ~ERROR<LF>~ if the operation fails.

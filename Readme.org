@@ -769,6 +769,101 @@ object of the ~asio::ip::tcp::socket~ class. However, usually, there is no need 
 because the destructor of the socket object closes the socket if one was not closed explicitly.
 
 ** Chapter 03 - Implementing Client Applications
+*** Introduction
+A client is a part of a distributed application that communicates with another part of this
+application called a server, in order to consume services it provides. The server, on the other
+hand, is a part of distributed application that passively waits for requests arriving from clients.
+When a request arrives, the server performs the requested operation and sends a response—the result
+of the operation—back to the client.
+
+The key characteristic of a client is that it needs a service provided by the server and it
+initiates the communication session with that server in order to consume the service. The key
+characteristic of the server is that it serves the requests coming from the clients by providing a
+requested service.
+
+**** The classification of client applications
+Client applications can be classified by the transport layer protocol they use for communication
+with the server. If the client uses a ~UDP~ protocol, it is called a ~UDP client~. If it uses a ~TCP
+protocol~, it is called a ~TCP client~ correspondingly. Of course, there are many other transport
+layer protocols that client applications may use for communication. Moreover, there are
+multiprotocol clients that can communicate over several protocols.
+
+Another way to classify client applications is according to whether the client is synchronous or
+asynchronous. A synchronous client application uses synchronous socket API calls that block the
+thread of execution until the requested operation is completed, or an error occurs. Thus, a typical
+synchronous ~TCP client~ would use the ~asio::ip::tcp::socket::write_some()~ method or ~the
+asio::write()~ free function to send a request to the sever and then use the
+~asio::ip::tcp::socket::read_some()~ method or the ~asio::read()~ free function to receive a
+response. These methods and functions are blocking, which makes the client synchronous.
+
+An asynchronous client application as opposed to a synchronous one uses asynchronous socket API
+calls. For example, an asynchronous ~TCP client~ may use the
+~asio::ip::tcp::socket::async_write_some()~ method or the ~asio::async_write()~ free function to
+send a request to the server and then use the ~asio::ip::tcp::socket::async_read_some()~ method or
+the ~asio::async_read()~ free function to asynchronously receive a response.
+
+**** Synchronous versus asynchronous
+The main advantage of a synchronous approach is its simplicity. A synchronous client is
+significantly easier to develop, debug, and support than a functionally equal asynchronous one.
+Asynchronous clients are more complex due to the fact that asynchronous operations that are used by
+them complete in other places in code (mainly in callbacks) than they are initiated. Usually, this
+requires allocating additional data structures in the free memory to keep the context of the request
+and callback functions, and also involves thread synchronization and other extras that may make the
+application structure quite complex and error-prone. Most of these extras are not required in
+synchronous clients. Besides, the asynchronous approach brings in additional computational and
+memory overhead, which makes it less efficient than a synchronous one in some conditions.
+
+However, the synchronous approach has some functional limitations, which often make this approach
+unacceptable. These limitations consist of the inability to cancel a synchronous operation after it
+has started, or to assign it a timeout so that it gets interrupted if it is running longer than a
+certain amount of time. As opposed to synchronous operations, asynchronous ones can be canceled at
+any moment after operation initiation and before the moment it completes.
+
+Besides the difference in the complexity and functionality described above, the two approaches
+differ in efficiency when it comes to running several requests in parallel.
+
+*** Implementing a synchronous TCP client
+A synchronous ~TCP~ client is a part of a distributed application that complies with the following
+statements:
+- Acts as a client in the client-server communication model
+- Communicates with the server application using a ~TCP~ protocol
+- Uses I/O and control operations (at least those I/O operations that are related to communication
+  with a server) that block the thread of execution until the corresponding operation completes, or
+  an error occurs
+
+A typical synchronous ~TCP~ client works according to the following algorithm:
+1. Obtain the IP-address and the protocol port number of the server application.
+2. Allocate an active socket.
+3. Establish a connection with the server application.
+4. Exchange messages with the server.
+5. Shut down the connection.
+6. Deallocate the socket.
+
+*** Implementing a synchronous UDP client
+A synchronous ~UDP client~ is a part of a distributed application that complies with the following
+statements:
+- Acts as a client in the client-server communication model
+- Communicates with the server application using ~UDP~ protocol
+- Uses I/O and control operations (at least those I/O operations that are related to communication
+  with the server) that block the thread of execution until the corresponding operation completes,
+  or an error occurs
+
+A typical synchronous ~UDP client~ works according to the following algorithm:
+1. Obtain an IP-address and a protocol port number of each server the client application is intended
+   to communicate with.
+2. Allocate a ~UDP~ socket.
+3. Exchange messages with the servers.
+4. Deallocate the socket.
+
+*** Implementing an asynchronous TCP client
+In this recipe, we'll consider an asynchronous ~TCP client~ application supporting the asynchronous
+execution of the requests and request canceling functionality. Here is the list of requirements the
+application will fulfill:
+- Input from the user should be processed in a separate thread - the user interface thread. This
+  thread should never be blocked for a noticeable amount of time.
+- The user should be able to issue multiple requests to different servers.
+- The user should be able to issue a new request before the previously issued requests complete.
+- The user should be able to cancel the previously issued requests before they complete.
 
 ** Chapter 04 - Implementing Server Applications
 ** Chapter 05 - HTTP and SSL/TLS
