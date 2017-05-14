@@ -45,3 +45,8 @@ ch03: clean
 	$(CC) $(ALL_FLAGS) -o $(BIN)/02_SyncUDPClient $(SRC)/ch03/02_Sync_udp_client.cpp
 	$(CC) $(ALL_FLAGS) -o $(BIN)/03_AsyncTCPClient $(SRC)/ch03/03_Async_tcp_client.cpp
 	$(CC) $(ALL_FLAGS) -o $(BIN)/04_AsyncTCPClientMT $(SRC)/ch03/04_Async_tcp_client_mt.cpp
+
+ch04: clean
+	$(CC) $(ALL_FLAGS) -o $(BIN)/01_SyncIterativeTCPServer $(SRC)/ch04/01_Sync_iterative_tcp_server.cpp
+	$(CC) $(ALL_FLAGS) -o $(BIN)/02_SyncParallelTCPServer $(SRC)/ch04/02_Sync_parallel_tcp_server.cpp
+	$(CC) $(ALL_FLAGS) -o $(BIN)/03_AsyncParallelTCPServer $(SRC)/ch04/03_Async_parallel_tcp_server.cpp

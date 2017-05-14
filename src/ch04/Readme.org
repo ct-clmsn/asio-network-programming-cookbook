@@ -1,0 +1,16 @@
+* The sample protocol
+In this chapter, we are going to consider three recipes describing how to implement the synchronous
+iterative ~TCP~ server, synchronous parallel ~TCP~ server, and asynchronous ~TCP~ server. In all the
+recipes, it is assumed that the server communicates with clients using the following intentionally
+trivialized (for the sake of clarity) application layer protocol.
+
+A server application accepts request messages represented as ASCII strings containing a sequence of
+symbols ending with a new-line ASCII symbol. All the symbols coming after the new-line symbol are
+ignored by the server.
+
+Having received a request, the server performs some dummy operations and replies with a constant
+message as follows:
+    ~"Response\n"~
+
+Such a trivial protocol allows us to concentrate on the implementation of the server and not the
+service provided by it.

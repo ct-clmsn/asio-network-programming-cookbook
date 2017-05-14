@@ -866,5 +866,155 @@ application will fulfill:
 - The user should be able to cancel the previously issued requests before they complete.
 
 ** Chapter 04 - Implementing Server Applications
+*** Introduction
+A server is a part of a distributed application that provides a service or services that are
+consumed by other parts of this application - clients. Clients communicate with the server in order
+to consume services provided by it.
+
+Usually, a server application plays a passive role in the client-server communication process.
+During start-up, a server application attaches to a particular well-known port (meaning, it is known
+to the potential clients or at least it can be obtained by the clients at runtime from some
+well-known registry) on the host machine. After this, it passively waits for incoming requests
+arriving to that port from the clients. When the request arrives, the server processes it (serves)
+by performing actions according to the specification of the service it provides.
+
+Depending on the services that particular server provides, the request processing may mean a
+different thing. An HTTP server, for example, would usually read the content of a file specified in
+the request message and send it back to the client. A proxy server would simply redirect a client's
+request to a different server for the actual processing (or maybe for another round of redirection).
+Other more specific servers may provide services that perform complex computations on the data
+provided by the client in the request and return results of such computations back to the client.
+
+Not all servers play a passive role. Some server applications may send messages to the clients
+without waiting for the clients to first send a request. Usually, such servers act as notifiers, and
+they notify clients of some interesting events. In this case, clients may not need to send any data
+to the server at all. Instead, they passively wait for notifications from the server and having
+received one, they react accordingly. Such a communication model is called push-style communication.
+This model is gaining popularity in modern web applications, providing additional flexibility.
+
+One more characteristic of a server is a manner in which it serves clients. An iterative server
+serves clients in one-by-one fashion, meaning that it does not start serving the next client before
+it completes serving the one it is currently serving. A parallel server can serve multiple clients
+in parallel. On a single-processor computer, a parallel server interleaves different stages of
+communication with several clients running them on a single processor. For example, having connected
+to one client and while waiting for the request message from it, the server can switch to connecting
+the second client, or read the request from the third one; after this, it can switch back to the
+first client to continue serving it. Such parallelism is called pseudo parallelism, as a processor
+is merely switching between several clients, but does not serve them truly simultaneously, which is
+impossible with a single processor.
+
+On multiprocessor computers, the true parallelism is possible, when a server serves more than one
+client at the same time using different hardware threads for each client.
+
+Another way to classify server applications, from an implementation's point of view, is according to
+whether the server is synchronous or asynchronous. A synchronous server uses synchronous socket API
+calls that block the thread of execution until the requested operation is completed, or else an
+error occurs. Thus, a typical synchronous ~TCP~ server would use methods such as
+~asio::ip::tcp::acceptor::accept()~ to accept the client connection request,
+~asio::ip::tcp::socket::read_some()~ to receive the request message from the client, and then
+~asio::ip::tcp::socket::write_some()~ to send the response message back to the client. All three
+methods are blocking. They block the thread of execution until the requested operation is completed,
+or an error occurs, which makes the server using these operations synchronous.
+
+An asynchronous server application, as opposed to the synchronous one, uses asynchronous socket API
+calls. For example, an asynchronous ~TCP~ server may use the
+~asio::ip::tcp::acceptor::async_accept()~ method to asynchronously accept the client connection
+request, the ~asio::ip::tcp::socket::async_read_some()~ method or the ~asio::async_read()~ free
+function to asynchronously receive the request message from the client, and then the
+~asio::ip::tcp::socket::async_write_some()~ method or the ~asio::async_write()~ free function to
+asynchronously send a response message back to the client.
+
+The main advantage of a synchronous approach as compared to an asynchronous one is its simplicity. A
+synchronous server is significantly easier to implement, debug, and support than a functionally
+equal asynchronous one. Asynchronous servers are more complex due to the fact that asynchronous
+operations used by them complete in other places in code than they are initiated. Usually, this
+requires allocating additional data structures in the free memory to keep the context of the
+request, implementing callback functions, thread synchronization, and other extras that may make the
+application structure quite complex and error-prone. Most of these extras are not required in
+synchronous servers. Besides, an asynchronous approach brings in additional computational and memory
+overheads, which may make it less efficient than a synchronous one in some situations.
+
+However, a synchronous approach has some functional limitations, which often makes it unacceptable.
+These limitations consist of the inability to cancel a synchronous operation after it has started,
+or to assign it a timeout so that it gets interrupted if it is running for too long. As opposed to
+synchronous operations, asynchronous ones can be canceled at any moment after the operation has been
+initiated.
+
+The fact that synchronous operations cannot be canceled significantly limits the area of the
+application of synchronous servers. Publicly available servers that use synchronous operations are
+vulnerable to the attacks of a culprit. If such a server is single-threaded, a single malicious
+client is enough to block the server, not allowing other clients to communicate with it. Malicious
+client used by a culprit connects to the server and does not send any data to it, while the latter
+is blocked in one of the synchronous reading functions or methods, which does not allow it to serve
+other clients.
+
+*** Implementing a synchronous iterative TCP server
+A synchronous iterative TCP server is a part of a distributed application that satisfies the
+following criteria:
+- Acts as a server in the client-server communication model
+- Communicates with client applications over ~TCP~ protocol
+- Uses I/O and control operations that block the thread of execution until the corresponding
+  operation completes, or an error occurs
+- Handles clients in a serial, one-by-one fashion
+
+A typical synchronous iterative ~TCP~ server works according to the following algorithm:
+1. Allocate an acceptor socket and bind it to a particular ~TCP~ port.
+2. Run a loop until the server is stopped:
+   1. Wait for the connection request from a client.
+   2. Accept the client's connection request when one arrives.
+   3. Wait for the request message from the client.
+   4. Read the request message.
+   5. Process the request.
+   6. Send the response message to the client.
+   7. Close the connection with the client and deallocate the socket.
+
+*** Implementing a synchronous parallel TCP server
+A synchronous parallel ~TCP~ server is a part of a distributed application that satisfies the
+following criteria:
+- Acts as a server in the client-server communication model
+- Communicates with client applications over ~TCP~ protocol
+- Uses I/O and control operations that block the thread of execution until the corresponding
+  operation completes, or an error occurs
+- May handle more than one client simultaneously
+
+A typical synchronous parallel ~TCP~ server works according to the following algorithm:
+1. Allocate an acceptor socket and bind it to a particular ~TCP~ port.
+2. Run a loop until the server is stopped:
+   - Wait for the incoming connection request from a client
+   - Accept the client's connection request
+   - Spawn a thread of control and in the context of this thread:
+     * Wait for the request message from the client
+     * Read the request message
+     * Process the request
+     * Send a response message to the client
+     * Close the connection with the client and deallocate the socket
+
+*** Implementing an asynchronous TCP server
+An asynchronous ~TCP~ server is a part of a distributed application that satisfies the following
+criteria:
+- Acts as a server in the client-server communication model
+- Communicates with client applications over ~TCP~ protocol
+- Uses the asynchronous I/O and control operations
+- May handle multiple clients simultaneously
+
+A typical asynchronous ~TCP~ server works according to the following algorithm:
+1. Allocate an acceptor socket and bind it to a particular ~TCP~ port.
+2. Initiate the asynchronous accept operation.
+3. Spawn one or more threads of control and add them to the pool of threads that run the Boost.Asio
+   event loop.
+4. When the asynchronous accept operation completes, initiate a new one to accept the next
+   connection request.
+5. Initiate the asynchronous reading operation to read the request from the connected client.
+6. When the asynchronous reading operation completes, process the request and prepare the response
+   message.
+7. Initiate the asynchronous writing operation to send the response message to the client.
+8. When the asynchronous writing operation completes, close the connection and deallocate the
+   socket.
+
+Note that the steps starting from the fourth step in the preceding algorithm may be performed in
+arbitrary order depending on the relative timing of the concrete asynchronous operations in a
+concrete application. Due to the asynchronous model of the server, sequential order of execution of
+the steps may not hold even when the server is running on a single- processor computer.
+
 ** Chapter 05 - HTTP and SSL/TLS
 ** Chapter 06 - Other Topics
